@@ -133,9 +133,11 @@ class GdriveSpider(CrawlSpider):
         content_classes = [ ]
 
         if file_type == 'html':
-            xtitle = response.xpath('//head/title/text()').extract_first()
+            xtitle = response.xpath('//head/meta[@property="og:title"]/@content').extract_first()
+            if not xtitle:
+                xtitle = response.xpath('//head/title/text()').extract_first()
             if xtitle:
-                title = xtitle.strip()
+                title = xtitle.split(':', 1)[-1].strip()
 
             # Find inline content
             for content_div in response.xpath('//div[@role="main"]//div[@class="edlDocViewBoxContents"]/div'):

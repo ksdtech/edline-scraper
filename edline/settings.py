@@ -68,8 +68,11 @@ ITEM_PIPELINES = {
   'scrapy.pipelines.images.ImagesPipeline': 300,
   'edline.pipelines.InlineHtmlPipeline': 400,
 }
-FILES_STORE = '/Users/pz/Projects/_active/edline/files'
-IMAGES_STORE = '/Users/pz/Projects/_active/edline/images'
+
+
+
+FILES_STORE = '/Users/pz/Projects/_active/edline-scraper/files'
+IMAGES_STORE = '/Users/pz/Projects/_active/edline-scraper/images'
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See http://doc.scrapy.org/en/latest/topics/autothrottle.html
