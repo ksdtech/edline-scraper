@@ -1,0 +1,9 @@
+.DS_Store
+*.pyc
+*.pyo
+*.log
+images/
+files/
+client_secrets.json
+credentials.json
+items.json
