@@ -17,17 +17,17 @@ class PageItem(scrapy.Item):
         (r'application/pdf', 'pdf'),
     )
 
+    title        = scrapy.Field()
     request_url  = scrapy.Field()
+    location     = scrapy.Field()
     content_type = scrapy.Field()
     file_type    = scrapy.Field()
-    location     = scrapy.Field()
-    title        = scrapy.Field()
-    image_titles = scrapy.Field()
-    image_urls   = scrapy.Field()
-    images       = scrapy.Field()
-    file_titles  = scrapy.Field()
     file_urls    = scrapy.Field()
+    file_metas   = scrapy.Field()
     files        = scrapy.Field()  # downloaded files
+    image_urls   = scrapy.Field()
+    image_metas  = scrapy.Field()
+    images       = scrapy.Field()
     main_classes = scrapy.Field()
     contents     = scrapy.Field()
     content_classes = scrapy.Field()

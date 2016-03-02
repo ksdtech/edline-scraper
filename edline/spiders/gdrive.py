@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
+import mimetypes
 import re
 import sys
 
+from six.moves.urllib.parse import urlparse, urlunparse
+
 import scrapy
 from scrapy.exceptions import CloseSpider
+from scrapy.http import Request, HtmlResponse
 from scrapy.linkextractors.lxmlhtml import LxmlLinkExtractor
 from scrapy.spiders.crawl import CrawlSpider, Rule
 
@@ -54,6 +58,8 @@ class GdriveSpider(CrawlSpider):
                 content_links.append(link) 
         return content_links
 
+    # TODO: Override _requests_to_follow to add referer meta
+    # r.meta.update(rule=n, link_text=link.text, referer=response.url)
 
     # Callback for response from followed links
     def parse_item(self, response):
@@ -96,6 +102,7 @@ class GdriveSpider(CrawlSpider):
         if title is None:
             title = response.request.meta.get('link_text', 'Untitled')
 
+
         item['title'] = title
         item['request_url'] = response.request.url
         item['location'] = response.url
@@ -106,20 +113,25 @@ class GdriveSpider(CrawlSpider):
         # Files we want the FilesPipeline to download
         # For 'html' types with 'contents' the InlineHtml
         if file_type == 'pdf':
+            item['location'] = response.request.headers.get('Referer', response.url)
             if not title.lower().endswith('.pdf'):
                 title += '.pdf'
-            item['file_titles'] = [ title ]
-            item['file_urls']   = [ response.url ]
+            item['file_urls']  = [ response.url ]
+            item['file_metas'] = [ { 'title': title, 'content_type': 'application/pdf' } ]
 
         # Images we want the ImagesPipeline to download
         if file_type == 'html':
             # Need to build a list of img "alt" and "title"
             img_links = [l for l in self.img_link_extractor.extract_links(response)]
             if img_links:
-                item['image_titles'] = [ ]
-                item['image_urls'] = [ ]
+                item['image_urls']  = [ ]
+                item['image_metas'] = [ ]
                 for link in self.process_img_links(img_links):
-                    item['image_titles'].append(link.text)
                     item['image_urls'].append(link.url)
+                    # TODO: get real content_type
+                    u = urlparse(link.url)
+                    clean_url = urlunparse((u.scheme, u.netloc, u.path, None, None, None))
+                    content_type = mimetypes.guess_type(clean_url, strict=False)
+                    item['image_metas'].append( { 'title': link.text, 'content_type': content_type } )
     
         yield item

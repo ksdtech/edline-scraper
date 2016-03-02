@@ -110,14 +110,14 @@ class InlineHtmlPipeline(object):
       )
     ]
 
-    item[self.FILES_URLS_FIELD] = [ urljoin('file://', pathname2url(absolute_path)) ]
-    item['file_titles'] = [ title ]
+    item['file_urls']  = [ urljoin('file://', pathname2url(absolute_path)) ]
+    item['file_metas'] = [ {'title': title, 'content_type': 'text/html'} ]
     item = self.item_completed(results, item, self.spiderinfo)
     return item
 
   def item_completed(self, results, item, info):
-    if isinstance(item, dict) or self.FILES_RESULT_FIELD in item.fields:
-      item[self.FILES_RESULT_FIELD] = [x for ok, x in results if ok]
+    if isinstance(item, dict) or 'files' in item.fields:
+      item['files'] = [x for ok, x in results if ok]
  
     if self.LOG_FAILED_RESULTS:
       for ok, value in results:

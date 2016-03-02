@@ -236,32 +236,36 @@ class PageUploader():
       print('foreign host %s' % u.hostname)
     return folder
 
+  def uploadFilesForItem(self, item):
+      for i in range(len(item['files'])):
+        file  = item['files'][i]
+        meta  = item['file_metas'][i]
+        title = meta['title']
+        file_type = PageItem.get_file_type(item['content_type'])
+        path = os.path.join(FILES_STORE, file['path'])
+        folder = self.getFolderPathFromUrl(item['location'])
+        folder_id = None
+        if folder is None:
+          print('cannot upload - no folder for %s' % item['location'])
+        else:
+          folder_id = self.getFolderId(folder)
+          if folder_id is None:
+            print('cannot upload - no folder id for %s' % folder)
+        if folder_id:
+          if file_type == 'html':
+            self.createFile(title, None, folder_id, path, 'text/html', 
+              'application/vnd.google-apps.document')
+          elif file_type == 'pdf':
+            self.createFile(title, None, folder_id, path, 'application/pdf')
+          else:
+            print('cannot upload - no mime type for %s' % item['location'])
+
   def uploadAllItems(self, fname):
     with open(fname) as data_file:    
       items = json.load(data_file)
       for item in items:
         if item['files']:
-          file_type = item['file_type']
-          for i in range(len(item['files'])):
-            file  = item['files'][i]
-            title = item['file_titles'][i]
-            path = os.path.join(FILES_STORE, file['path'])
-            folder = self.getFolderPathFromUrl(item['location'])
-            folder_id = None
-            if folder is None:
-              print('cannot upload - no folder for %s' % item['location'])
-            else:
-              folder_id = self.getFolderId(folder)
-              if folder_id is None:
-                print('cannot upload - no folder id for %s' % folder)
-            if folder_id:
-              if file_type == 'html':
-                self.createFile(title, None, folder_id, path, 'text/html', 
-                  'application/vnd.google-apps.document')
-              elif file_type == 'pdf':
-                self.createFile(title, None, folder_id, path, 'application/pdf')
-              else:
-                print('cannot upload - no mime type for %s' % item['location'])
+          self.uploadFilesForItem(item)
 
 if __name__ == '__main__':
   pu = PageUploader()
