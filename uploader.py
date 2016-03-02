@@ -336,8 +336,10 @@ class PageUploader():
                         self.uploadFile(meta)
 
 if __name__ == '__main__':
+    items_file = os.path.join(os.path.dirname(__file__), 'items.json')
+
     pu = PageUploader(True)
     # pu.createCredentials()
     pu.buildService()
-    pu.uploadAllItems('/Users/pz/Projects/_active/edline-scraper/items.json')
+    pu.uploadAllItems(items_file)
     pu.dumpLinks()
