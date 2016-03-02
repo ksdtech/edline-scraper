@@ -5,7 +5,8 @@ import codecs
 import hashlib
 import os
 
-from six.moves.urllib.parse import urlparse
+from six.moves.urllib.parse import urlparse, urljoin
+from six.moves.urllib.request import pathname2url
 from twisted.internet.defer import DeferredList
 
 # Define your item pipelines here
@@ -27,6 +28,7 @@ class InlineHtmlPipeline(object):
     's3': S3FilesStore,
   }
 
+  DEFAULT_FILES_URLS_FIELD = 'file_urls'
   DEFAULT_FILES_RESULT_FIELD = 'files'
 
   class SpiderInfo(object):
@@ -45,6 +47,7 @@ class InlineHtmlPipeline(object):
 
   @classmethod
   def from_settings(cls, settings):
+    cls.FILES_URLS_FIELD = settings.get('FILES_URLS_FIELD', cls.DEFAULT_FILES_URLS_FIELD)
     cls.FILES_RESULT_FIELD = settings.get('FILES_RESULT_FIELD', cls.DEFAULT_FILES_RESULT_FIELD)
     store_uri = settings['FILES_STORE']
     return cls(store_uri)
@@ -105,7 +108,10 @@ class InlineHtmlPipeline(object):
         'path': path,
         'checksum': checksum }
       )
-    ]    
+    ]
+
+    item[self.FILES_URLS_FIELD] = [ urljoin('file://', pathname2url(absolute_path)) ]
+    item['file_titles'] = [ title ]
     item = self.item_completed(results, item, self.spiderinfo)
     return item
 
