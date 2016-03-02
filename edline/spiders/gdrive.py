@@ -102,7 +102,6 @@ class GdriveSpider(CrawlSpider):
         if title is None:
             title = response.request.meta.get('link_text', 'Untitled')
 
-
         item['title'] = title
         item['request_url'] = response.request.url
         item['location'] = response.url
@@ -111,13 +110,13 @@ class GdriveSpider(CrawlSpider):
         item['content_classes'] = content_classes
 
         # Files we want the FilesPipeline to download
-        # For 'html' types with 'contents' the InlineHtml
         if file_type == 'pdf':
             item['location'] = response.request.headers.get('Referer', response.url)
             if not title.lower().endswith('.pdf'):
                 title += '.pdf'
             item['file_urls']  = [ response.url ]
-            item['file_metas'] = [ { 'title': title, 'content_type': 'application/pdf' } ]
+            item['file_metas'] = [ { 'link_url': item['request_url'], 'location': item['location'], 
+                'title': title, 'content_type': 'application/pdf' } ]
 
         # Images we want the ImagesPipeline to download
         if file_type == 'html':
@@ -130,8 +129,10 @@ class GdriveSpider(CrawlSpider):
                     item['image_urls'].append(link.url)
                     # TODO: get real content_type
                     u = urlparse(link.url)
-                    clean_url = urlunparse((u.scheme, u.netloc, u.path, None, None, None))
-                    content_type = mimetypes.guess_type(clean_url, strict=False)
-                    item['image_metas'].append( { 'title': link.text, 'content_type': content_type } )
+                    content_type = mimetypes.guess_type(u.path, strict=False)
+                    item['image_metas'].append( { 'link_url': link.url, 'location': item['location'], 
+                        'title': link.text, 'content_type': content_type } )
     
+        # If the item is an HTML response and has 'contents'
+        # The InlineHtmlPipeline will create a file and create the 'inlines'
         yield item

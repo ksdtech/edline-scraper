@@ -28,9 +28,6 @@ class InlineHtmlPipeline(object):
     's3': S3FilesStore,
   }
 
-  DEFAULT_FILES_URLS_FIELD = 'file_urls'
-  DEFAULT_FILES_RESULT_FIELD = 'files'
-
   class SpiderInfo(object):
     def __init__(self, spider):
       self.spider = spider
@@ -47,8 +44,6 @@ class InlineHtmlPipeline(object):
 
   @classmethod
   def from_settings(cls, settings):
-    cls.FILES_URLS_FIELD = settings.get('FILES_URLS_FIELD', cls.DEFAULT_FILES_URLS_FIELD)
-    cls.FILES_RESULT_FIELD = settings.get('FILES_RESULT_FIELD', cls.DEFAULT_FILES_RESULT_FIELD)
     store_uri = settings['FILES_STORE']
     return cls(store_uri)
 
@@ -86,7 +81,7 @@ class InlineHtmlPipeline(object):
 </body>
 </html>
 """
-    
+
     url = item['location']
     media_guid = hashlib.sha1(url).hexdigest()
     media_ext = '.html' 
@@ -97,6 +92,10 @@ class InlineHtmlPipeline(object):
       f.write('<h2>%s</h2>\n' % title)
       f.write(item['contents'])
       f.write(closer)
+
+    item['inline_urls']  = [ urljoin('file://', pathname2url(absolute_path)) ]
+    item['inline_metas'] = [ { 'link_url': item['request_url'], 'location': item['location'], 
+        'title': title, 'content_type': 'text/html'} ]
 
     checksum = None
     with open(absolute_path, 'rb') as f:
@@ -110,14 +109,12 @@ class InlineHtmlPipeline(object):
       )
     ]
 
-    item['file_urls']  = [ urljoin('file://', pathname2url(absolute_path)) ]
-    item['file_metas'] = [ {'title': title, 'content_type': 'text/html'} ]
     item = self.item_completed(results, item, self.spiderinfo)
     return item
 
   def item_completed(self, results, item, info):
     if isinstance(item, dict) or 'files' in item.fields:
-      item['files'] = [x for ok, x in results if ok]
+      item['inlines'] = [x for ok, x in results if ok]
  
     if self.LOG_FAILED_RESULTS:
       for ok, value in results:
