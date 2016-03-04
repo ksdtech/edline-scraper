@@ -42,7 +42,7 @@ class GdriveSpider(CrawlSpider):
 
     def __init__(self, category=None, *args, **kwargs):
         super(GdriveSpider, self).__init__(*args, **kwargs)
-        self.max_requests = 200
+        self.max_requests = 100
         self.counter = 0
         self.img_link_extractor = ImgLinkExtractor(tags=('img', 'audio', 'video'), attrs=('src',),
             allow_domains=self.allowed_domains, deny_extensions=[])

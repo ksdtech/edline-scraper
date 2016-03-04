@@ -10,11 +10,10 @@ import webbrowser
 
 from six.moves.urllib.parse import urljoin, urlparse, urlunparse
 
-from oauth2client import client
-from oauth2client.file import Storage
-from apiclient.discovery import build
 from apiclient.http import MediaFileUpload
 from apiclient import errors as apierrors
+
+from drive_service import DriveServiceAuth
 
 from edline.items import get_file_type
 from edline.settings import FILES_STORE, IMAGES_STORE
@@ -67,9 +66,11 @@ u'markedViewedByMeDate': u'1970-01-01T00:00:00.000Z',
 class PageUploader():
 
     def __init__(self, mock):
-        fpath = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
+        secrets_path =  = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client_secrets.json')
+        credentials_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
+        self.drive_auth = DriveServiceAuth(secrets_path, credentials_path)
+        self.drive_service = None
         self.mock = mock
-        self.storage = Storage(fpath)
         self.folders = { }
         self.links = { }
 
@@ -91,22 +92,8 @@ class PageUploader():
         for url in sorted(self.links.keys()):
             print('%s\t%s' % (url, self.links[url]['href']))
 
-    def createCredentials(self):
-        flow = client.flow_from_clientsecrets(
-            'client_secrets.json',
-            scope='https://www.googleapis.com/auth/drive',
-            redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-
-        auth_uri = flow.step1_get_authorize_url()
-        webbrowser.open(auth_uri)
-        auth_code = raw_input('Enter the auth code: ')
-        credentials = flow.step2_exchange(auth_code)
-        self.storage.put(credentials)
-
-    def buildService(self):
-        credentials = self.storage.get()
-        http_auth = credentials.authorize(httplib2.Http())
-        self.drive_service = build('drive', 'v2', http=http_auth)
+    def initService(self):
+        self.drive_service = self.drive_auth.build_service()
         about = self.drive_service.about().get().execute()
         root_folder_id = about['rootFolderId']
         self.folders['/'] = { 'parent': None, 'drive_id': root_folder_id }
