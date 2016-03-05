@@ -7,5 +7,4 @@ This is the first part of a pipeline that will use the gdrive-static-site projec
 
 Invoke the crawler with:
 
-     scrapy crawl gdrive -o items.json
-
+     scrapy crawl gdrive -o items.json -a max_requests=1000

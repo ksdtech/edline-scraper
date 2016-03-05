@@ -9,18 +9,21 @@ import re
 
 import scrapy
 
-RE_KNOWN_TYPES = (
-    (r'text/html', 'html'),
-    (r'application/pdf', 'pdf'),
-)
+KNOWN_TYPES = {
+    'text/html': 'html',
+    'application/pdf': 'pdf',
+    'image/jpeg': 'jpg',  # mimetypes.guess_extension returns '.jpe'
+}
 
 def get_file_type(content_type):
-    file_type = None
-    for pat, ext in RE_KNOWN_TYPES:
-        if re.search(pat, content_type):
-            return ext
-    print('unknown content_type %s' % content_type)
-    return None
+    mime_type = re.sub(r'\s*[;].*$', '', content_type)
+    ext = KNOWN_TYPES.get(mime_type)
+    if not ext:
+        ext = mimetypes.guess_extension(mime_type)
+        if ext:
+            ext = ext[1:]
+        print('content_type %s -> %r' % (content_type, ext))
+    return ext
 
 # MCE Document div.edlDocViewBoxContents
 # Doc-in-a-box 

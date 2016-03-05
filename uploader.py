@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-import httplib2
+from datetime import datetime
 import json
 import os
 import re
@@ -63,25 +63,41 @@ u'markedViewedByMeDate': u'1970-01-01T00:00:00.000Z',
 }
 """
 
+class MaxUpload(Exception):
+    pass
+
+class UntitledFolder(Exception):
+    pass
+
+class UntitledFile(Exception):
+    pass
+
 class PageUploader():
 
-    def __init__(self, mock):
-        secrets_path =  = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client_secrets.json')
+    def __init__(self, max_files=100, mock=False):
+        secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client_secrets.json')
         credentials_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
         self.drive_auth = DriveServiceAuth(secrets_path, credentials_path)
         self.drive_service = None
         self.mock = mock
+        self.max_files = max_files
+        self.counter = 0
+        self.tag = 'UPLOADER-' + datetime.now().replace(second=0, microsecond=0).isoformat()
         self.folders = { }
         self.links = { }
 
-    def mockFolder(self):
+    def mockFolder(self, metadata={}):
         folder_id = uuid.uuid4().hex
-        return { 'id': folder_id }
+        file = { 'id': folder_id }
+        file.update(metadata)
+        return file
 
-    def mockFile(self):
+    def mockFile(self, metadata={}):
         file_id = uuid.uuid4().hex
         link = 'https://docs.google.com/a/kentfieldschools.org/document/d/%s/edit?usp=drivesdk' % file_id
-        return { 'id': file_id, 'alternateLink': link }
+        file = { 'id': file_id, 'alternateLink': link }
+        file.update(metadata)
+        return file
 
     def addLink(self, link_url, file):
         u = urlparse(link_url)
@@ -126,16 +142,23 @@ class PageUploader():
             file = result[0]
         return file
 
-    def createFolder(self, name, parent_id):
-        file_metadata = {
-            'title': name,
+    def createFolder(self, title, parent_id):
+        if title is None or title.strip() == '':
+            raise UntitledFolder
+ 
+        folder_metadata = {
+            'title': title,
             'parents': [ { 'id': parent_id } ],
-            'mimeType': 'application/vnd.google-apps.folder'
+            'mimeType': 'application/vnd.google-apps.folder',
+            'properties': { 'tag': self.tag },
         }
 
+        if self.mock:
+            return self.mockFolder(folder_metadata)
+            
         file = None
         try:
-            file = self.drive_service.files().insert(body=file_metadata).execute()
+            file = self.drive_service.files().insert(body=folder_metadata).execute()
         except apierrors.HttpError as error:
             print('An error occurred: %s' % error)
         return file
@@ -143,13 +166,11 @@ class PageUploader():
     def findOrCreateFolder(self, name, parent_id):
         created = False
         file = None
-        if self.mock:
-            file = self.mockFolder()
-        else:
+        if not self.mock:
             file = self.searchFolder(name, parent_id)
-            if file is None:
-                file = self.createFolder(name, parent_id)
-                created = True
+        if file is None:
+            file = self.createFolder(name, parent_id)
+            created = True
         return (file, created)
 
     def createFile(self, title, description, parent_id, filename, mime_type, to_mime_type=None):
@@ -165,18 +186,28 @@ class PageUploader():
         Returns:
             Inserted file metadata if successful, None otherwise.
         """
+        if self.max_files > 0 and self.counter >= self.max_files:
+            raise MaxUpload('Maximum %d files uploaded' % self.counter)
+
+        self.counter += 1    
+
+        if title is None or title.strip() == '':
+            raise UntitledFile
+
+        file_metadata = {
+            'title': title,
+            'mimeType': to_mime_type,
+            'properties': { 'tag': self.tag },
+        }
+
         file = None
         if self.mock:
-            file = self.mockFile()
+            file = self.mockFile(file_metadata)
         else:
             media_body = MediaFileUpload(filename, mimetype=mime_type, resumable=True)
             if to_mime_type is None:
                 to_mime_type = mime_type
 
-            file_metadata = {
-                'title': title,
-                'mimeType': to_mime_type
-            }
             if description:
                 file_metadata['description'] = description
             if parent_id:
@@ -185,6 +216,7 @@ class PageUploader():
             try:
                 file = self.drive_service.files().insert(
                     body=file_metadata, media_body=media_body).execute()
+                print('File %s inserted at %s' % (title, parent_id))
             except apierrors.HttpError as error:
                 print('An error occurred: %s' % error)
         return file
@@ -225,33 +257,37 @@ class PageUploader():
             if len(parts) > 0:
                 if parts[0] == 'pages':
                     folder = '/Sites/District/Pages'
+                    if len(parts) > 1 and parts[1] == 'Kentfield_School_District':
+                        del parts[1]
                     if len(parts) > 1:
                         if parts[1] == 'News':
                             folder = '/Sites/District/Articles'
-                        else:
-                            if parts[1] == 'Kentfield_School_District':
-                                parts = parts[2:-1]
-                            else:
-                                parts = parts[1:-1]
-                            folder = folder + '/' + '/'.join([re.sub(r'[_]+', ' ', p).strip() for p in parts])
+                            parts = []
                 elif parts[0] == 'files':
                     folder = '/Sites/District/Files'
+                    parts = []
         elif u.hostname == 'www.edlinesites.net':
             if len(parts) > 0:
                 if parts[0] == 'pages':
                     if len(parts) > 1:
-                        school = parts[1]
+                        school = parts[1].split('_', 1)[0]
                         folder = '/Sites/' + school + '/Pages'
-                        if len(parts) > 2:
-                            if parts[2] == 'News':
-                                folder = '/Sites/' + school + '/Articles'
-                            else:
-                                parts = parts[2:-1]
-                                folder = folder + '/' + '/'.join([re.sub(r'[_]+', ' ', p).strip() for p in parts])
+                        del parts[1]
+                    if len(parts) > 1:
+                        if parts[1] == 'News':
+                            folder = '/Sites/' + school + '/Articles'
+                            parts = []
                 elif parts[0] == 'files':
                     folder = '/Sites/District/Files'
+                    parts = []
         else:
             print('foreign host %s' % u.hostname)
+            parts = []
+
+        if len(parts) > 2:
+            parts = parts[1:-1]
+            folder = folder + '/' + '/'.join([re.sub(r'[_]+', ' ', p).strip() for p in parts])
+        # print('%s -> %s' % (url, folder))
         return folder
 
     def uploadImage(self, meta):
@@ -302,6 +338,8 @@ class PageUploader():
                     self.addLink(meta['link_url'], file)
 
     def uploadAllItems(self, fname):
+        self.initService()
+
         with open(fname) as data_file:    
             items = json.load(data_file)
             for item in items:
@@ -309,24 +347,39 @@ class PageUploader():
                     for i in range(len(item['images'])):
                         meta  = item['image_metas'][i].copy()
                         meta.update(item['images'][i])
-                        self.uploadImage(meta)
+                        try:
+                            self.uploadImage(meta)
+                        except MaxUpload as e:
+                            return
+                        except Exception as e:
+                            print('%s: %r' % (e.__class__.__name__, meta))
+                            return
                 if 'files' in item:
                     for i in range(len(item['files'])):
                         meta  = item['file_metas'][i].copy()
                         meta.update(item['files'][i])
-                        self.uploadFile(meta)
+                        try:
+                            self.uploadFile(meta)
+                        except MaxUpload as e:
+                            return
+                        except Exception as e:
+                            print('%s: %r' % (e.__class__.__name__, meta))
+                            return
             for item in items:
                 if 'inlines' in item:
                     for i in range(len(item['inlines'])):
                         meta  = item['inline_metas'][i].copy()
                         meta.update(item['inlines'][i])
-                        self.uploadFile(meta)
+                        try:
+                            self.uploadFile(meta)
+                        except MaxUpload as e:
+                            return
+                        except Exception as e:
+                            print('%s: %r' % (e.__class__.__name__, meta))
+                            return
 
 if __name__ == '__main__':
     items_file = os.path.join(os.path.dirname(__file__), 'items.json')
-
-    pu = PageUploader(True)
-    # pu.createCredentials()
-    pu.buildService()
+    pu = PageUploader(10, False)
     pu.uploadAllItems(items_file)
-    pu.dumpLinks()
+    # pu.dumpLinks()

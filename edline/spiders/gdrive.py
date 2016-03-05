@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import mimetypes
+import os
 import re
 import sys
 
@@ -10,7 +11,7 @@ from six.moves.urllib.parse import urlparse, urlunparse
 import scrapy
 from scrapy.exceptions import CloseSpider
 from scrapy.http import Request, HtmlResponse
-from scrapy.linkextractors.lxmlhtml import LxmlLinkExtractor
+from scrapy.linkextractors import LinkExtractor
 from scrapy.spiders.crawl import CrawlSpider, Rule
 
 from edline.items import PageItem
@@ -37,12 +38,16 @@ class GdriveSpider(CrawlSpider):
         'http://www.kentfieldschools.org',
     )
     rules = (
-        Rule(LxmlLinkExtractor(allow_domains=allowed_domains), callback='parse_item'),
+        Rule(LinkExtractor(allow_domains=allowed_domains), callback='parse_item', follow=True),
     )
 
-    def __init__(self, category=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(GdriveSpider, self).__init__(*args, **kwargs)
-        self.max_requests = 100
+        if 'max_requests' in kwargs:
+            self.max_requests = int(kwargs['max_requests'])
+        else:
+            self.max_requests = 0 # unlimiited
+        print('Starting GDriveSpider with maximum %d requests' % self.max_requests)
         self.counter = 0
         self.img_link_extractor = ImgLinkExtractor(tags=('img', 'audio', 'video'), attrs=('src',),
             allow_domains=self.allowed_domains, deny_extensions=[])
@@ -63,9 +68,13 @@ class GdriveSpider(CrawlSpider):
 
     # Callback for response from followed links
     def parse_item(self, response):
-        if self.max_requests > 0 and self.counter == self.max_requests:
+        if self.max_requests > 0 and self.counter >= self.max_requests:
             raise CloseSpider('%d requests parsed' % self.counter)
         self.counter += 1
+
+        request_url = response.request.url
+        if self.counter % 50 == 0:
+            print('Request # %d: %s' % (self.counter, request_url))
 
         title = None
         main_classes = [ ]
@@ -103,7 +112,7 @@ class GdriveSpider(CrawlSpider):
             title = response.request.meta.get('link_text', 'Untitled')
 
         item['title'] = title
-        item['request_url'] = response.request.url
+        item['request_url'] = request_url
         item['location'] = response.url
         item['main_classes'] = main_classes
         item['contents'] = contents
@@ -111,7 +120,7 @@ class GdriveSpider(CrawlSpider):
 
         # Files we want the FilesPipeline to download
         if file_type == 'pdf':
-            item['location'] = response.request.headers.get('Referer', response.url)
+            item['location'] = response.request.headers.get('Referer', request_url)
             if not title.lower().endswith('.pdf'):
                 title += '.pdf'
             item['file_urls']  = [ response.url ]
@@ -126,12 +135,16 @@ class GdriveSpider(CrawlSpider):
                 item['image_urls']  = [ ]
                 item['image_metas'] = [ ]
                 for link in self.process_img_links(img_links):
-                    item['image_urls'].append(link.url)
-                    # TODO: get real content_type
                     u = urlparse(link.url)
-                    content_type = mimetypes.guess_type(u.path, strict=False)
+                    title = link.text
+                    content_type = mimetypes.guess_type(u.path, strict=False)                    
+                    fpath, ext = os.path.splitext(u.path)
+                    if title is None or title.strip() == '':
+                        title = os.path.basename(fpath)
+                    title += ext.lower()
+                    item['image_urls'].append(link.url)
                     item['image_metas'].append( { 'link_url': link.url, 'location': item['location'], 
-                        'title': link.text, 'content_type': content_type } )
+                        'title': title, 'content_type': content_type } )
     
         # If the item is an HTML response and has 'contents'
         # The InlineHtmlPipeline will create a file and create the 'inlines'
