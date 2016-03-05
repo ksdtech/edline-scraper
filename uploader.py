@@ -75,8 +75,8 @@ class UntitledFile(Exception):
 class PageUploader():
 
     def __init__(self, max_files=100, mock=False):
-        secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client_secrets.json')
-        credentials_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'credentials.json')
+        secrets_path = os.path.join(os.path.dirname(__file__), 'client_secrets.json')
+        credentials_path = os.path.join(os.path.dirname(__file__), 'credentials.json')
         self.drive_auth = DriveServiceAuth(secrets_path, credentials_path)
         self.drive_service = None
         self.mock = mock
