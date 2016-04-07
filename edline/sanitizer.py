@@ -41,19 +41,21 @@ def add_link_text(text, base_url, links):
     mod_count = 0
     soup = BeautifulSoup(text)
     for a in soup.findAll('a'):
-        url = canonical_url(base_url, a['href'])
-        if url in links:
-            strong = soup.new_tag('strong')
-            strong.string = '[ ' + links[url]['href'] + ' ]'
-            a.insert_before(strong)
-            mod_count += 1
+        if 'href' in a:
+            url = canonical_url(base_url, a['href'])
+            if url in links:
+                strong = soup.new_tag('strong')
+                strong.string = '[ ' + links[url]['href'] + ' ]'
+                a.insert_before(strong)
+                mod_count += 1
     for img in soup.findAll('img'):
-        url = canonical_url(base_url, img['src'])
-        if url in links:
-            strong = soup.new_tag('strong')
-            strong.string = '[ ' + links[url]['href'] + ' ]'
-            img.insert_before(strong)
-            mod_count += 1
+        if 'src' in img:
+            url = canonical_url(base_url, img['src'])
+            if url in links:
+                strong = soup.new_tag('strong')
+                strong.string = '[ ' + links[url]['href'] + ' ]'
+                img.insert_before(strong)
+                mod_count += 1
     if mod_count:
         return soup.prettify()
     return text
