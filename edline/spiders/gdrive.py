@@ -110,6 +110,8 @@ class GdriveSpider(CrawlSpider):
 
         if title is None:
             title = response.request.meta.get('link_text', 'Untitled')
+        # Remove trailing dots
+        title = re.sub(r'[.\s]+$', '', title)
 
         item['title'] = title
         item['request_url'] = request_url

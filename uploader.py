@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 import webbrowser
 
@@ -74,39 +75,51 @@ class UntitledFile(Exception):
 
 class PageUploader():
 
-    def __init__(self, max_files=100, mock=False):
+    def __init__(self, max_files=100, verbose=False, dry_run=False, mime_types=None):
         secrets_path = os.path.join(os.path.dirname(__file__), 'client_secrets.json')
         credentials_path = os.path.join(os.path.dirname(__file__), 'credentials.json')
         self.drive_auth = DriveServiceAuth(secrets_path, credentials_path)
         self.drive_service = None
-        self.mock = mock
+        self.verbose = verbose
+        self.dry_run = dry_run
+        if not mime_types:
+            self.mime_types = ['*/*']
+        if isinstance(mime_types, (list, tuple)):
+            self.mime_types = mime_types
+        else:
+            self.mime_types = [mime_types]
         self.max_files = max_files
         self.counter = 0
         self.tag = 'UPLOADER-' + datetime.now().replace(second=0, microsecond=0).isoformat()
         self.folders = { }
         self.links = { }
 
-    def mockFolder(self, metadata={}):
+    def mockFolder(self, parent_id, metadata={}):
         folder_id = uuid.uuid4().hex
         file = { 'id': folder_id }
         file.update(metadata)
+        if self.verbose and '*/*' in self.mime_types:
+            print('Folder %s mocked at %s' % (file['title'], parent_id))
         return file
 
-    def mockFile(self, metadata={}):
+    def mockFile(self, parent_id, metadata={}):
         file_id = uuid.uuid4().hex
         link = 'https://docs.google.com/a/kentfieldschools.org/document/d/%s/edit?usp=drivesdk' % file_id
         file = { 'id': file_id, 'alternateLink': link }
         file.update(metadata)
+        print('File %s mocked at %s' % (file['title'], parent_id))
         return file
 
     def addLink(self, link_url, file):
         u = urlparse(link_url)
         link = urlunparse((u.scheme, u.netloc, u.path, None, None, None)).lower()
-        self.links[link] = { 'href': file['alternateLink'], 'id': file['id'] }
+        self.links[link] = { 'href': file['alternateLink'], 'title': file['title'], 'id': file['id'] }
 
     def dumpLinks(self):
+        print('\n\nLINKS:')
+        print('title\tfrom\tto')
         for url in sorted(self.links.keys()):
-            print('%s\t%s' % (url, self.links[url]['href']))
+            print('%s\t%s\t%s' % (self.links[url]['title'], url, self.links[url]['href']))
 
     def initService(self):
         self.drive_service = self.drive_auth.build_service()
@@ -153,20 +166,22 @@ class PageUploader():
             'properties': { 'tag': self.tag },
         }
 
-        if self.mock:
-            return self.mockFolder(folder_metadata)
-            
+
         file = None
-        try:
-            file = self.drive_service.files().insert(body=folder_metadata).execute()
-        except apierrors.HttpError as error:
-            print('An error occurred: %s' % error)
+        if self.dry_run:
+            file = self.mockFolder(parent_id, folder_metadata)
+        else:
+            try:
+                file = self.drive_service.files().insert(body=folder_metadata).execute()
+            except apierrors.HttpError as error:
+                print('An error occurred: %s' % error)
+            time.sleep(0.5)
         return file
  
     def findOrCreateFolder(self, name, parent_id):
         created = False
         file = None
-        if not self.mock:
+        if not self.dry_run:
             file = self.searchFolder(name, parent_id)
         if file is None:
             file = self.createFolder(name, parent_id)
@@ -189,6 +204,9 @@ class PageUploader():
         if self.max_files > 0 and self.counter >= self.max_files:
             raise MaxUpload('Maximum %d files uploaded' % self.counter)
 
+        if not('*/*' in self.mime_types or mime_type in self.mime_types):
+            return None
+
         self.counter += 1    
 
         if title is None or title.strip() == '':
@@ -201,8 +219,8 @@ class PageUploader():
         }
 
         file = None
-        if self.mock:
-            file = self.mockFile(file_metadata)
+        if self.dry_run:
+            file = self.mockFile(parent_id, file_metadata)
         else:
             media_body = MediaFileUpload(filename, mimetype=mime_type, resumable=True)
             if to_mime_type is None:
@@ -219,6 +237,7 @@ class PageUploader():
                 print('File %s inserted at %s' % (title, parent_id))
             except apierrors.HttpError as error:
                 print('An error occurred: %s' % error)
+            time.sleep(0.5)
         return file
  
     def getFolderId(self, folder):
@@ -281,7 +300,8 @@ class PageUploader():
                     folder = '/Sites/District/Files'
                     parts = []
         else:
-            print('foreign host %s' % u.hostname)
+            if self.verbose:
+                print('foreign host %s' % u.hostname)
             parts = []
 
         if len(parts) > 2:
@@ -294,10 +314,11 @@ class PageUploader():
         folder_id = None
         folder = self.getFolderPathFromUrl(meta['location'])
         if folder is None:
-            print('cannot upload image %s - no folder' % meta['location'])
+            if self.verbose:
+                print('cannot upload image %s - no folder' % meta['location'])
         else:
             folder_id = self.getFolderId(folder)
-            if folder_id is None:
+            if folder_id is None and self.verbose:
                 print('cannot upload image %s - no folder id for %s' % (meta['location'], folder))
 
         if folder_id:
@@ -311,10 +332,11 @@ class PageUploader():
         folder_id = None
         folder = self.getFolderPathFromUrl(meta['location'])
         if folder is None:
-            print('cannot upload file %s - no folder' % meta['location'])
+            if self.verbose:
+                print('cannot upload file %s - no folder' % meta['location'])
         else:
             folder_id = self.getFolderId(folder)
-            if folder_id is None:
+            if folder_id is None and self.verbose:
                 print('cannot upload file %s - no folder id for %s' % (meta['location'], folder))
 
         if folder_id:
@@ -331,7 +353,8 @@ class PageUploader():
             elif file_type == 'pdf':
                 mime_type = 'application/pdf'
             if mime_type is None:
-                print('cannot upload - no mime type for %s (%s)' % (meta['path'], meta['content_type']))
+                if self.verbose:
+                    print('cannot upload - no mime type for %s (%s)' % (meta['path'], meta['content_type']))
             else:
                 file = self.createFile(meta['title'], None, folder_id, path, mime_type, to_mime_type)
                 if file:
@@ -345,41 +368,57 @@ class PageUploader():
             for item in items:
                 if 'images' in item:
                     for i in range(len(item['images'])):
-                        meta  = item['image_metas'][i].copy()
-                        meta.update(item['images'][i])
+                        meta = item['images'][i]
+                        if 'image_metas' in item and len(item['image_metas']) > i:
+                            meta.update(item['image_metas'][i])
                         try:
                             self.uploadImage(meta)
                         except MaxUpload as e:
                             return
                         except Exception as e:
-                            print('%s: %r' % (e.__class__.__name__, meta))
+                            print('images[%d] %s: %r' % (i, e.__class__.__name__, meta))
+                            raise
                             return
                 if 'files' in item:
                     for i in range(len(item['files'])):
-                        meta  = item['file_metas'][i].copy()
-                        meta.update(item['files'][i])
+                        meta = item['files'][i]
+                        if 'file_metas' in item and len(item['file_metas']) > i:
+                            meta.update(item['file_metas'][i])
                         try:
                             self.uploadFile(meta)
                         except MaxUpload as e:
                             return
                         except Exception as e:
-                            print('%s: %r' % (e.__class__.__name__, meta))
+                            print('files[%d] %s: %r' % (i, e.__class__.__name__, meta))
+                            raise
                             return
             for item in items:
                 if 'inlines' in item:
                     for i in range(len(item['inlines'])):
-                        meta  = item['inline_metas'][i].copy()
-                        meta.update(item['inlines'][i])
+                        meta = item['inlines'][i]
+                        if 'inline_metas' in item and len(item['inline_metas']) > i:
+                            meta.update(item['inline_metas'][i])
                         try:
                             self.uploadFile(meta)
                         except MaxUpload as e:
                             return
                         except Exception as e:
-                            print('%s: %r' % (e.__class__.__name__, meta))
+                            print('inlines[%d] %s: %r' % (i, e.__class__.__name__, meta))
+                            raise
                             return
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Upload items to Google Drive folder')
+    parser.add_argument('-v', '--verbose', action='store_true', help='print progress on stdout')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='dry run (no uploading)')
+    parser.add_argument('-t', '--mime-types', help='mime_types, comma-delimited')
+
+    args = parser.parse_args()
+    mime_types = [mt for mt in args.mime_types.split(',')]
+    pu = PageUploader(-1, args.verbose, args.dry_run, mime_types)
+
     items_file = os.path.join(os.path.dirname(__file__), 'items.json')
-    pu = PageUploader(10, False)
     pu.uploadAllItems(items_file)
-    # pu.dumpLinks()
+    pu.dumpLinks()
